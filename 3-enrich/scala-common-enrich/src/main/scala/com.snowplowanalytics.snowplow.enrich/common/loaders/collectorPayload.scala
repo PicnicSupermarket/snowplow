@@ -72,7 +72,7 @@ object CollectorApi {
   // the path to the requested object.
   // TODO: move this to somewhere not specific to
   // this collector
-  private val ApiPathRegex = """^[\/]?([^\/]+)\/([^\/]+)[\/]?$""".r
+  private val ApiPathRegex = """^\/?(.*\/)*([^\/]+)\/([^\/]+)\/?$""".r
 
   /**
    * Parses the requested URI path to determine the
@@ -83,7 +83,7 @@ object CollectorApi {
    *         CollectorApi or a Failure String.
    */
   def parse(path: String): Validation[String, CollectorApi] = path match {
-    case ApiPathRegex(vnd, ver)   => CollectorApi(vnd, ver).success
+    case ApiPathRegex(_, vnd, ver)   => CollectorApi(vnd, ver).success
     case _ if isIceRequest(path)  => SnowplowTp1.success
     case _                        => s"Request path ${path} does not match (/)vendor/version(/) pattern nor is a legacy /i(ce.png) request".fail
   }
