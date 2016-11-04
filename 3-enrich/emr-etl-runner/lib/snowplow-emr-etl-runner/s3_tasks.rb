@@ -92,6 +92,7 @@ module Snowplow
             clean_final_name = final_name
               if name_match = final_name.match(/^_+(.*)$/)
                 clean_final_name = name_match[1]
+              end
 
             # Hopefully basename.yyyy-MM-dd-HH.region.instance.txt.gz
             return clean_final_name + '.' + region + '.' + instance + final_extn
