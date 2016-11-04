@@ -144,7 +144,11 @@ module Snowplow
         files_to_move = case
         when (args[:start].nil? and args[:end].nil?)
           if config[:collectors][:format] == 'clj-tomcat'
-            '.*localhost\_access\_log.*\.txt.*'
+            if config[:collectors][:file_name_pattern].nil?
+              '.*localhost\_access\_log.*\.txt.*'
+            else
+              config[:collectors][:file_name_pattern]
+            end
           else
             '.+' # this will include those for ndjson/UrbanAirship
           end

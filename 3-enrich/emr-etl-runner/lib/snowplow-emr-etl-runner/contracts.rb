@@ -120,6 +120,7 @@ module Snowplow
         }),
       :collectors => ({
         :format => String,
+        :file_name_pattern => Maybe[String],
         }),
       :enrich => ({
         :job_name => String,
