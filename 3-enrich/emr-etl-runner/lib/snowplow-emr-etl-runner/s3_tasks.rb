@@ -86,8 +86,15 @@ module Snowplow
                 [ name, extn ]
               end
 
+            # Stripping underscores if the previous renaming still includes
+            # underscores in front of the file name, otherwise it will be
+            # ignored by hadoop
+            clean_final_name = final_name
+              if name_match = final_name.match(/^_+(.*)$/)
+                clean_final_name = name_match[1]
+
             # Hopefully basename.yyyy-MM-dd-HH.region.instance.txt.gz
-            return final_name + '.' + region + '.' + instance + final_extn
+            return clean_final_name + '.' + region + '.' + instance + final_extn
           else
             # Hadoop ignores files which begin with underscores
             if m = basename.match('^_+(.*\.gz)$')
