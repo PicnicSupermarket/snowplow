@@ -84,6 +84,15 @@ module Snowplow
       :comprows => Maybe[Num]
       })
 
+     FileRenamingHash = ({
+        :pattern => String,
+        :timestamp_position => Num
+      })
+
+     DistCpHash = ({
+        :group_by => String
+      })
+
     # The Hash containing effectively the configuration YAML.
     ConfigHash = ({
       :aws => ({
@@ -91,8 +100,10 @@ module Snowplow
         :secret_access_key => String,
         :s3 => ({
           :region => String,
-          :buckets => BucketHash
-          }),
+          :buckets => BucketHash,
+          :file_renaming => Maybe[FileRenamingHash],
+          :distcp => Maybe[DistCpHash]
+        }),
         :emr => ({
           :ami_version => String,
           :region => String,

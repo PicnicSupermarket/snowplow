@@ -230,15 +230,17 @@ module Snowplow
         end
 
         if enrich
-
+          
           # 1. Compaction to HDFS (if applicable)
           raw_input = csbr[:processing]
 
           is_supported_collector_format = self.class.is_cloudfront_log(config[:collectors][:format]) ||
                                           config[:collectors][:format] == "thrift" ||
-                                          self.class.is_ua_ndjson(config[:collectors][:format])
+                                          self.class.is_ua_ndjson(config[:collectors][:format]) ||
+                                          (config[:collectors][:format] == "clj-tomcat" && !config[:aws][:s3][:file_renaming].nil?)
 
           to_hdfs = is_supported_collector_format && s3distcp
+          
 
           # TODO: throw exception if processing thrift with --skip s3distcp
           # https://github.com/snowplow/snowplow/issues/1648
@@ -251,8 +253,10 @@ module Snowplow
 
           if to_hdfs
 
+            group_by = config[:aws][:s3][:distcp][:group_by].nil? ? ".*\\.([0-9]+-[0-9]+-[0-9]+)-[0-9]+\\..*" : config[:aws][:s3][:distcp][:group_by]
+
             # for ndjson/urbanairship we can group by everything, just aim for the target size
-            group_by = self.class.is_ua_ndjson(config[:collectors][:format]) ? ".*(urbanairship).*" : ".*\\.([0-9]+-[0-9]+-[0-9]+)-[0-9]+\\..*"
+            group_by = self.class.is_ua_ndjson(config[:collectors][:format]) ? ".*(urbanairship).*" : group_by
 
             # Create the Hadoop MR step for the file crushing
             compact_to_hdfs_step = Elasticity::S3DistCpStep.new(legacy = @legacy)
@@ -265,10 +269,10 @@ module Snowplow
                 "--targetSize"  , "128",
                 "--outputCodec" , "lzo"
               ].select { |el|
-                self.class.is_cloudfront_log(config[:collectors][:format]) || self.class.is_ua_ndjson(config[:collectors][:format])
+                self.class.is_cloudfront_log(config[:collectors][:format]) || self.class.is_ua_ndjson(config[:collectors][:format]) || (config[:collectors][:format] == "clj-tomcat" && !config[:aws][:s3][:file_renaming].nil?)
               }
             compact_to_hdfs_step.name << ": Raw S3 -> HDFS"
-
+            
             # Add to our jobflow
             @jobflow.add_step(compact_to_hdfs_step)
           end

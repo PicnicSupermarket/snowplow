@@ -54,7 +54,7 @@ module Snowplow
       # +collector_format+:: the format of the collector log files
       # Contract String, String => Func[String, String => String] disabled contract because of:
       # https://github.com/egonSchiele/contracts.ruby/issues/238
-      def self.build_fix_filenames(region, collector_format)
+      def self.build_fix_filenames(region, collector_format, file_renaming_config)
         return lambda { |basename, filepath|
 
           if matches = collector_format.match(/^.+?\/(.+?)\//)
@@ -79,6 +79,22 @@ module Snowplow
                 begin
                   tstamp_ymdh = Time.at(tstamp.to_i).utc.to_datetime.strftime("%Y-%m-%d-%H")
                   [ base + '.' + tstamp_ymdh, '.txt' + extn ]
+                rescue StandardError => e
+                  [ name, extn ]
+                end
+              elsif !file_renaming_config.nil? && name_match = name.match(file_renaming_config[:pattern])
+                renamed = []
+                captures = name_match.captures
+                begin
+                  for i in 0..captures.length
+                    if i == file_renaming_config[:timestamp_position]
+                      tstamp_ymdh = Time.at(captures[i].to_i).utc.to_datetime.strftime("%Y-%m-%d-%H")
+                      renamed.push("." + tstamp_ymdh + ".")
+                    else
+                      renamed.push(captures[i])
+                    end
+                  end
+                  [renamed.join(), extn]
                 rescue StandardError => e
                   [ name, extn ]
                 end
@@ -168,7 +184,7 @@ module Snowplow
           Sluice::Storage::files_between(args[:start], args[:end], CF_DATE_FORMAT, CF_FILE_EXT)
         end
 
-        fix_filenames = build_fix_filenames(config[:aws][:s3][:region], config[:collectors][:format])
+        fix_filenames = build_fix_filenames(config[:aws][:s3][:region], config[:collectors][:format], config[:aws][:s3][:file_renaming])
         files_moved = in_locations.map { |in_location|
           Sluice::Storage::S3::move_files(s3, in_location, processing_location, files_to_move, fix_filenames, true)
         }
