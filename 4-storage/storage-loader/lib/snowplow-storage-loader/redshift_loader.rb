@@ -29,6 +29,9 @@ module Snowplow
       # Used to find the altered enriched events
       ALTERED_ENRICHED_PATTERN = /(run=[0-9\-]+\/atomic-events)/
 
+      OLD_RUN_PATTERN = /(run=[0-9\-]+)/
+      ATOMIC_EVENTS_PATTERN = /atomic-events/
+
       # Versions 0.5.0 and earlier of Hadoop Shred don't copy atomic.events into the shredded bucket
       OLD_ENRICHED_PATTERN = /0\.[0-5]\.[0-9]/
 
@@ -64,14 +67,26 @@ module Snowplow
 
         copy_statements = if atomic_events_location == :shredded
           loc = Sluice::Storage::S3::Location.new(config[:aws][:s3][:buckets][:shredded][:good])
-          altered_enriched_filepath = Sluice::Storage::S3::list_files(s3, loc).find { |file|
-            ALTERED_ENRICHED_PATTERN.match(file.key)
-          }
+          altered_enriched_filepath = OLD_RUN_PATTERN.match(config[:aws][:s3][:buckets][:shredded][:good])
           if altered_enriched_filepath.nil?
-            raise DatabaseLoadError, 'Cannot find atomic-events directory in shredded/good'
+            # Loading a unique run
+            altered_enriched_filepath = Sluice::Storage::S3::list_files(s3, loc).find { |file|
+              ALTERED_ENRICHED_PATTERN.match(file.key)
+            }
+            if altered_enriched_filepath.nil?
+              raise DatabaseLoadError, 'Cannot find atomic-events directory in shredded/good'
+            end
+            altered_enriched_subdirectory = ALTERED_ENRICHED_PATTERN.match(altered_enriched_filepath.key)[1]
+          else
+            # Loading an old run, probably from the archive
+            altered_enriched_filepath = Sluice::Storage::S3::list_files(s3, loc).find { |file|
+              ATOMIC_EVENTS_PATTERN.match(file.key)
+            }
+            if altered_enriched_filepath.nil?
+              raise DatabaseLoadError, 'Cannot find atomic-events directory in shredded/good'
+            end
+            altered_enriched_subdirectory = ""
           end
-          # Of the form "run=xxx/atomic-events"
-          altered_enriched_subdirectory = ALTERED_ENRICHED_PATTERN.match(altered_enriched_filepath.key)[1]
           [build_copy_from_tsv_statement(config, config[:aws][:s3][:buckets][:shredded][:good] + altered_enriched_subdirectory, target[:table], target[:maxerror])]
         else
           [build_copy_from_tsv_statement(config, config[:aws][:s3][:buckets][:enriched][:good], target[:table], target[:maxerror])]
