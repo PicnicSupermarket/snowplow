@@ -62,17 +62,39 @@ module Snowplow
           :shredded
         end
 
+        puts "Preparing copy statements"
         copy_statements = if atomic_events_location == :shredded
           loc = Sluice::Storage::S3::Location.new(config[:aws][:s3][:buckets][:shredded][:good])
-          altered_enriched_filepath = Sluice::Storage::S3::list_files(s3, loc).find { |file|
+
+          matching_directories = Sluice::Storage::S3::list_files(s3, loc).select { |file|
             ALTERED_ENRICHED_PATTERN.match(file.key)
-          }
-          if altered_enriched_filepath.nil?
+          }.map { |file| 
+            ALTERED_ENRICHED_PATTERN.match(file.key)[1]
+          }.uniq
+
+          if matching_directories == []
             raise DatabaseLoadError, 'Cannot find atomic-events directory in shredded/good'
           end
-          # Of the form "run=xxx/atomic-events"
-          altered_enriched_subdirectory = ALTERED_ENRICHED_PATTERN.match(altered_enriched_filepath.key)[1]
-          [build_copy_from_tsv_statement(config, config[:aws][:s3][:buckets][:shredded][:good] + altered_enriched_subdirectory, target[:table], target[:maxerror])]
+
+          copy_statements = matching_directories.map { |key|
+            specific_run_pattern = /(run=[0-9\-]+\/)/
+            is_specific_run = config[:aws][:s3][:buckets][:shredded][:good].match(specific_run_pattern)
+            key_filtered = key
+            if is_specific_run 
+              puts "Loading specific run"
+              key_filtered = key.gsub(specific_run_pattern, '')
+            end
+            copy_statement = build_copy_from_tsv_statement(config, config[:aws][:s3][:buckets][:shredded][:good] + key_filtered, target[:table], target[:maxerror])
+            puts "--------------------------------------------------------------------------------"
+            puts "-- Copy statement for : " + key
+            puts "-- " + copy_statement
+            puts "--------------------------------------------------------------------------------\n\n"
+
+            copy_statement
+          }
+
+          copy_statements
+          #[build_copy_from_tsv_statement(config, config[:aws][:s3][:buckets][:shredded][:good] + altered_enriched_subdirectory, target[:table], target[:maxerror])]
         else
           [build_copy_from_tsv_statement(config, config[:aws][:s3][:buckets][:enriched][:good], target[:table], target[:maxerror])]
         end + shredded_statements.map(&:copy)
@@ -129,8 +151,10 @@ module Snowplow
       def self.get_shredded_statements(config, target, s3)
 
         if config[:skip].include?('shred') # No shredded types to load
+          puts "Skipping shredded event copy"
           []
         else
+          puts "Preparing shredded events copy (without atomic-events)"
           schema = extract_schema(target[:table])
 
           ShreddedType.discover_shredded_types(s3, config[:aws][:s3][:buckets][:shredded][:good], schema).map { |st|
@@ -140,6 +164,11 @@ module Snowplow
               raise DatabaseLoadError, "Cannot find JSON Paths file to load #{st.s3_objectpath} into #{st.table}"
             end
 
+            puts "--------------------------------------------------------------------------------"
+            puts "-- Copy statement for : " + st.table.to_s
+            puts "-- " + build_copy_from_json_statement(config, st.s3_objectpath, jsonpaths_file, st.table, target[:maxerror])
+            puts "--------------------------------------------------------------------------------\n\n"
+            
             SqlStatements.new(
               build_copy_from_json_statement(config, st.s3_objectpath, jsonpaths_file, st.table, target[:maxerror]),
               build_analyze_statement(st.table),
